@@ -1,0 +1,18 @@
+{
+  "name": "ts-eval",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A JavaScript interpreter written entirely in the TypeScript type system",
+  "type": "module",
+  "scripts": {
+    "test": "tsc -p .",
+    "test:stats": "tsc -p . --extendedDiagnostics",
+    "lint": "node scripts/find-deferred.cjs",
+    "bench": "node bench/micro.cjs",
+    "examples": "tsc -p examples --extendedDiagnostics"
+  },
+  "devDependencies": {
+    "ts5": "npm:typescript@^5.9.3",
+    "typescript": "^7.0.2"
+  }
+}
