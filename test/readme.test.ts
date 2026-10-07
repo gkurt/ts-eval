@@ -5,7 +5,7 @@ import type { Expect, Equal } from './helpers';
 type A = Eval<'function(a,b) { return a + b; }', 5, 3>;
 type B = Eval<`function fib(n) {
   return n < 2 ? n : fib(n - 1) + fib(n - 2);
-}`, 15>;
+}`, 14>;
 type C = Eval<`(words) => {
   const freq = {};
   for (const w of words.split(" ")) freq[w] = (freq[w] ?? 0) + 1;
@@ -14,6 +14,6 @@ type C = Eval<`(words) => {
 
 export type Readme = [
   Expect<Equal<A, 8>>,
-  Expect<Equal<B, 610>>,
+  Expect<Equal<B, 377>>,
   Expect<Equal<C, ['the', 2]>>,
 ];

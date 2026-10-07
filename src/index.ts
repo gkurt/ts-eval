@@ -54,7 +54,7 @@ export type Logs<Src extends string, Args extends readonly unknown[] = []> = Run
 //   type R  = Result<S3>;   // the value, or EvalError<'Still running...'>
 // ---------------------------------------------------------------------------
 
-/** Compile, boot and run the first slice (~30k steps). Returns an opaque machine state. */
+/** Compile, boot and run the first slice (~18k steps). Returns an opaque machine state. */
 export type Start<Src extends string, Args extends readonly unknown[] = []> =
   Compile<Src> extends infer C
     ? C extends ['!done', infer Ast] ? RunSlice<Boot<Ast, [...Args]>>

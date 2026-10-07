@@ -9,7 +9,7 @@ type A = Eval<'function(a,b) { return a + b; }', 5, 3>;   // 8
 
 type B = Eval<`function fib(n) {
   return n < 2 ? n : fib(n - 1) + fib(n - 2);
-}`, 15>;                                                    // 610
+}`, 14>;                                                    // 377
 
 type C = Eval<`(words) => {
   const freq = {};
@@ -19,6 +19,41 @@ type C = Eval<`(words) => {
 ```
 
 `examples/showcase.ts` runs a Brainf\*ck interpreter (written in JavaScript) inside the type checker. There's also an N-Queens solver, quicksort, Roman numerals, matrix multiplication, 30! with exact digits, and a resumable `fib(18)` that makes 8,361 recursive calls.
+
+Everything works with both `tsc` (TypeScript 7) and [`bun check`](https://bun.com/docs/runtime/check), and is tested with both (see [Checkers](#checkers-tsc-and-bun-check)).
+
+## Compile-time validators
+
+The most practical use: write a check in plain JavaScript and run it on literal values where they appear in the code. A hand-written type-level parser for the same rules would be far longer.
+
+[`examples/cron.ts`](examples/cron.ts) validates a string argument where the function is called:
+
+```ts
+schedule('0 9-17 * * 1-5', job);   // ok
+schedule('0 24 * * *', job);
+// error: … not assignable to '"0 24 * * *" & { "invalid cron": "hour: '24' is outside 0-23" }'
+```
+
+[`examples/state-machine.ts`](examples/state-machine.ts) checks a config object's structure: every transition target exists, and every state is reachable (a breadth-first search):
+
+```ts
+export const broken = machine({
+  initial: 'cart',
+  states: { cart: { on: { checkout: 'payment' } }, payment: { on: { paid: 'shipped' } }, shipped: {}, refunded: {} },
+});
+// error: … & "state 'refunded' is unreachable from 'cart'"
+```
+
+The pattern is a generic parameter intersected with the check's result:
+
+```ts
+type Valid<S extends string> =
+  string extends S ? S                                   // only known at runtime: check it then
+  : Eval<Check, S> extends infer R ? (R extends true ? S : { 'invalid cron': R }) : never;
+declare function schedule<const S extends string>(expr: S & Valid<S>, job: () => void): void;
+```
+
+The message is wrapped in an object type because intersecting a string with a different string literal collapses to `never`, which would lose the message. Each check must fit the per-declaration budget (see below), so this suits small inputs: format strings, config tables, route patterns.
 
 ## API
 
@@ -75,7 +110,7 @@ The TypeScript checker has three hard limits. Most of the engineering went into 
 
 1. **Instantiation depth (100).** Non-tail recursion dies quickly. Everything here is tail-recursive state machines instead.
 2. **Tail recursion (1000 iterations per conditional type).** Every driver runs in fuel-bounded chunks (300 steps), and an outer loop re-enters it. Fuel is counted with a successor table: `Nx[F]` is `F + 1`. The obvious `[...F, 0]` copies the whole tuple each step, so it costs O(n) per iteration and made the lexer 5× slower.
-3. **5M instantiations per declaration.** This is the real ceiling: about 2,000 loop iterations or `fib(15)` per `Eval`.
+3. **5M instantiations per declaration.** This is the real ceiling: about 2,000 loop iterations or `fib(15)` per `Eval`. `bun check` stops at about half of that (see [Checkers](#checkers-tsc-and-bun-check)).
 
 Two discoveries mattered most.
 
@@ -84,26 +119,43 @@ Two discoveries mattered most.
 
 ### Going past the budget
 
-Each type alias declaration gets its own 5M budget. `Start` and `Resume` exploit that by running one slice (~30k machine steps) per declaration, so there is no overall limit:
+Each type alias declaration gets its own budget. `Start` and `Resume` exploit that by running one slice (~18k machine steps, ~1.5M instantiations) per declaration, so there is no overall limit. Slices are sized to fit both checkers' budgets:
 
 ```ts
 type S1 = Start<'function fib(n) { return n < 2 ? n : fib(n - 1) + fib(n - 2) }', [18]>;
 type S2 = Resume<S1>;
-// ... six more
-type S8 = Resume<S7>;
-type R = Result<S8>;   // 2584
+// ... nine more
+type S11 = Resume<S10>;
+type R = Result<S11>;   // 2584
 ```
+
+## Checkers: tsc and bun check
+
+Both are supported and tested. `bun check` is Bun's TypeScript checker. It tracks TypeScript 7, reports the same errors and uses the same `tsconfig.json`. It currently ships only in Bun's canary build, which is pinned as a dev dependency, so nothing needs installing globally.
+
+```bash
+npm test               # tsc
+npm run test:bun       # bun check
+npm run test:all       # tests and examples, with both
+npm run bench          # benchmark both (writes bench/RESULTS.md)
+```
+
+The one difference that matters here: **`bun check` runs out of budget for one declaration at about 2.6M instantiations (as tsc counts them), about half of tsc's 5M.** A single `Eval` fits about 950 loop iterations or `fib(14)` under `bun check`, compared with about 2,000 and `fib(15)` under tsc. Past that it reports error TS2589 ("Type instantiation is excessively deep"), and it does so quickly. Everything in this repo stays under the lower limit, using `Start`/`Resume` where needed. Your editor runs tsc, so code close to the limit can pass in the editor and fail under `bun check`. Keep single evaluations under ~2M instantiations if you use both (`npm run test:stats` prints the count).
 
 ## Numbers
 
-Measured on TypeScript 7.0.2 (native), checking times:
+From [`bench/RESULTS.md`](bench/RESULTS.md) (i9-12900K, Windows, median of 3 runs, wall time including startup):
 
-| Program | Time |
-|---|---|
-| test suite (~160 assertions) | ~6 s |
-| `fib(15)`: 1,973 calls | 2 s |
-| `for` loop summing 2,000 numbers | 7 s |
-| `examples/showcase.ts` (Brainf\*ck, N-Queens 5, …, resumable fib(18)) | ~15–25 s |
+| Case | Instantiations | tsc 7.0.2 | bun check |
+|---|---|---|---|
+| Test suite (~160 assertions) | 7.0M | 2.3 s | 0.9 s |
+| Examples (Brainf\*ck, N-Queens, validators, resumable `fib(18)`, …) | 23.8M | 6.4 s | 4.7 s |
+| `fib(14)`: 1,219 calls | 2.4M | 0.59 s | 0.42 s |
+| `fib(15)`: 1,973 calls | 3.7M | 0.84 s | out of budget |
+| `for` loop, 500 iterations | 1.4M | 0.82 s | 0.33 s |
+| `for` loop, 2,000 iterations | 5.5M | 3.1 s | out of budget |
+
+`bun check` is 1.4–2.6× faster. A single evaluation is one declaration, so it can't be split across threads; the examples gain least because their resumable chains run one after another.
 
 ## Project layout
 
@@ -120,12 +172,16 @@ src/
 test/          type-level assertions (npm test)
 examples/      heavier programs (npm run examples)
 scripts/       find-deferred.cjs: lint for deferred tuple types (npm run lint)
-bench/         micro.cjs: instantiation-count micro benchmarks (npm run bench -- "<type expr using I>")
+bench/         checkers.cjs: tsc vs bun check (npm run bench)
+               micro.cjs: instantiation-count micro benchmarks (npm run bench:micro -- "<type expr using I>")
 ```
 
 ```bash
 npm install
 npm test            # type-check = run the tests; no output means everything passed
+npm run test:bun    # the same with bun check
 npm run examples
 npm run lint
 ```
+
+`npm install` runs Bun's install script, which copies in the platform binary. It's approved in `package.json` (`allowScripts`), which npm 12 requires.

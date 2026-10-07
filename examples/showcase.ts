@@ -113,7 +113,6 @@ export type Algorithms = [
   Expect<Equal<Eval<QuickSort, [5, 3, 8, 1, 9, 2, 7]>, [1, 2, 3, 5, 7, 8, 9]>>,
   Expect<Equal<Eval<InsertionSort, [9, 4, 7, 1, 8, 2]>, [1, 2, 4, 7, 8, 9]>>,
   Expect<Equal<EvalWith<BinarySearch, [[1, 3, 5, 7, 9, 11, 13, 15], 11]>, 5>>,
-  Expect<Equal<Eval<NQueens, 5>, 10>>,
   Expect<Equal<Eval<Roman, 1994>, 'MCMXCIV'>>,
   Expect<Equal<EvalWith<MatMul, [[[1, 2], [3, 4]], [[5, 6], [7, 8]]]>, [[19, 22], [43, 50]]>>,
   Expect<Equal<Eval<WordFreq, 'the cat and the hat and the bat'>, [['the', 3], ['and', 2]]>>,
@@ -129,8 +128,14 @@ export type BigNumbers = [
 ];
 
 // --- beyond the per-declaration budget: resumable evaluation -------------------------
-// fib(18) makes 8,361 calls (~140k machine steps): too much for one declaration,
-// so it is spread over several, each with a fresh instantiation budget.
+// Each declaration gets a fresh instantiation budget, and each slice (~18k machine
+// steps) fits inside both tsc's and bun check's.
+
+// N-Queens(5) needs ~3.3M instantiations: over bun check's budget for one declaration.
+type Q1 = Start<NQueens, [5]>;
+type Q2 = Resume<Q1>;
+
+// fib(18) makes 8,361 calls (~190k machine steps), spread over 11 declarations.
 type Fib = 'function fib(n) { return n < 2 ? n : fib(n - 1) + fib(n - 2) }';
 type F1 = Start<Fib, [18]>;
 type F2 = Resume<F1>;
@@ -140,8 +145,14 @@ type F5 = Resume<F4>;
 type F6 = Resume<F5>;
 type F7 = Resume<F6>;
 type F8 = Resume<F7>;
+type F9 = Resume<F8>;
+type F10 = Resume<F9>;
+type F11 = Resume<F10>;
+
 export type Resumable = [
-  Expect<Equal<IsDone<F4>, false>>,
-  Expect<Equal<IsDone<F8>, true>>,
-  Expect<Equal<Result<F8>, 2584>>,
+  Expect<Equal<IsDone<Q1>, false>>,
+  Expect<Equal<Result<Q2>, 10>>,
+  Expect<Equal<IsDone<F10>, false>>,
+  Expect<Equal<IsDone<F11>, true>>,
+  Expect<Equal<Result<F11>, 2584>>,
 ];

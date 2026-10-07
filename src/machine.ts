@@ -562,12 +562,13 @@ type DriveAll<S> =
     : never;
 
 /**
- * One resumable slice of about 30k steps, comfortably inside the checker's
- * per-declaration budget of 5M instantiations. Each `type X = Resume<Prev>`
+ * One resumable slice of about 18k steps (~1.5M instantiations). That fits
+ * comfortably inside both tsc's per-declaration budget (5M) and bun check's,
+ * which runs out at about half of that. Each `type X = Resume<Prev>`
  * declaration gets a fresh budget, so a long computation can be spread across
  * declarations with no overall limit.
  */
-export type RunSlice<S> = S extends [Final, ...any[]] ? S : Drive<S, 100>;
+export type RunSlice<S> = S extends [Final, ...any[]] ? S : Drive<S, 60>;
 
 // ---------------------------------------------------------------------------
 // Entry
