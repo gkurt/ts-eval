@@ -55,6 +55,16 @@ declare function schedule<const S extends string>(expr: S & Valid<S>, job: () =>
 
 The message is wrapped in an object type because intersecting a string with a different string literal collapses to `never`, which would lose the message. Each check must fit the per-declaration budget (see below), so this suits small inputs: format strings, config tables, route patterns.
 
+## Testing type-level code against JavaScript
+
+[`examples/type-oracle.ts`](examples/type-oracle.ts) tests a type-level `Split` against what `s.split(",")` actually returns. ts-eval generates every string over `{"a", ","}` up to length 3, runs `split` on each, and the test compares the type on all 15. A typical hand-written version fails 8 of them:
+
+```
+{ input: ""; got: []; js: [""] } | { input: "a,"; got: ["a"]; js: ["a", ""] } | …
+```
+
+The expected values come from running the code rather than from the author's assumptions, and loops can generate whole input spaces. The oracle is ts-eval's semantics, not V8's, so this works for behaviour inside its subset.
+
 ## API
 
 | Type | Result |
